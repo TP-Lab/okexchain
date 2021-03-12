@@ -232,7 +232,6 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 
 	// log successful execution
 	k.Logger(ctx).Info(executionResult.Result.Log)
-	k.Logger(ctx).Info("trace msg", "trace", string(executionResult.TraceMsg))
 
 	ctx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
@@ -257,5 +256,16 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 
 	// set the events to the result
 	executionResult.Result.Events = ctx.EventManager().Events()
+
+	marshal, _ := json.Marshal(map[string]interface{}{
+		"blockchain": "okchain",
+		"tx":         st,
+		"result":     executionResult,
+	})
+	_ = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
+		Key:   []byte(st.TxHash.String()),
+		Value: marshal,
+	})
+
 	return executionResult.Result, nil
 }
