@@ -1,10 +1,13 @@
 package evm
 
 import (
+	"context"
+	"encoding/json"
 	"github.com/ethereum/go-ethereum/common"
 	ethermint "github.com/okex/okexchain/app/types"
 	"github.com/okex/okexchain/x/common/perf"
 	"github.com/okex/okexchain/x/evm/types"
+	"github.com/segmentio/kafka-go"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -12,8 +15,17 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 )
 
+var kafkaWriter *kafka.Writer
+
 // NewHandler returns a handler for Ethermint type messages.
 func NewHandler(k *Keeper) sdk.Handler {
+	if kafkaWriter == nil {
+		kafkaWriter = kafka.NewWriter(kafka.WriterConfig{
+			Brokers:  []string{"172.31.233.86:9092,172.31.233.87:9092,172.31.233.88:9092"},
+			Topic:    "ethereum_trx",
+			Balancer: &kafka.LeastBytes{},
+		})
+	}
 	return func(ctx sdk.Context, msg sdk.Msg) (result *sdk.Result, err error) {
 		ctx = ctx.WithEventManager(sdk.NewEventManager())
 
@@ -141,6 +153,17 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 
 	// set the events to the result
 	executionResult.Result.Events = ctx.EventManager().Events()
+
+	marshal, _ := json.Marshal(map[string]interface{}{
+		"blockchain": "okchain",
+		"tx":         st,
+		"result":     executionResult,
+	})
+	_ = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
+		Key:   []byte(st.TxHash.String()),
+		Value: marshal,
+	})
+
 	return executionResult.Result, nil
 }
 
@@ -209,6 +232,7 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 
 	// log successful execution
 	k.Logger(ctx).Info(executionResult.Result.Log)
+	k.Logger(ctx).Info("trace msg", "trace", string(executionResult.TraceMsg))
 
 	ctx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(

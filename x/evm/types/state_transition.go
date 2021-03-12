@@ -1,11 +1,14 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -51,10 +54,11 @@ type GasInfo struct {
 
 // ExecutionResult represents what's returned from a transition
 type ExecutionResult struct {
-	Logs    []*ethtypes.Log
-	Bloom   *big.Int
-	Result  *sdk.Result
-	GasInfo GasInfo
+	Logs     []*ethtypes.Log
+	Bloom    *big.Int
+	Result   *sdk.Result
+	TraceMsg []byte
+	GasInfo  GasInfo
 }
 
 // GetHashFn implements vm.GetHashFunc for Ethermint. It handles 3 cases:
@@ -88,7 +92,7 @@ func (st StateTransition) newEVM(
 	gasPrice *big.Int,
 	config ChainConfig,
 	extraEIPs []int,
-) *vm.EVM {
+) (*vm.EVM, *tracers.Tracer) {
 	// Create context for evm
 	blockCtx := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
@@ -106,11 +110,27 @@ func (st StateTransition) newEVM(
 		GasPrice: gasPrice,
 	}
 
+	var tracer *tracers.Tracer
+	var err error
+	// Constuct the JavaScript tracer to execute with
+	if tracer, err = tracers.New("callTracer"); err != nil {
+		return nil, nil
+	}
+	// Handle timeouts and RPC cancellations
+	deadlineCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	go func() {
+		<-deadlineCtx.Done()
+		tracer.Stop(errors.New("execution timeout"))
+	}()
+	defer cancel()
+
 	vmConfig := vm.Config{
 		ExtraEips: extraEIPs,
 	}
+	vmConfig.Tracer = tracer
+	vmConfig.Debug = true
 
-	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig)
+	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig), tracer
 }
 
 // TransitionDb will transition the state by applying the current transaction and
@@ -148,7 +168,7 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 
 	params := csdb.GetParams()
 
-	evm := st.newEVM(ctx, csdb, gasLimit, st.Price, config, params.ExtraEIPs)
+	evm, tracer := st.newEVM(ctx, csdb, gasLimit, st.Price, config, params.ExtraEIPs)
 
 	var (
 		ret             []byte
@@ -256,6 +276,8 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 		"executed EVM state transition; sender address %s; %s", st.Sender.String(), recipientLog,
 	)
 
+	rawMessage, _ := tracer.GetResult()
+
 	executionResult := &ExecutionResult{
 		Logs:  logs,
 		Bloom: bloomInt,
@@ -263,13 +285,13 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 			Data: resBz,
 			Log:  resultLog,
 		},
+		TraceMsg: rawMessage,
 		GasInfo: GasInfo{
 			GasConsumed: gasConsumed,
 			GasLimit:    gasLimit,
 			GasRefunded: leftOverGas,
 		},
 	}
-
 
 	return executionResult, nil
 }
