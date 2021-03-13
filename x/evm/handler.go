@@ -22,7 +22,7 @@ var kafkaWriter *kafka.Writer
 func NewHandler(k *Keeper) sdk.Handler {
 	if kafkaWriter == nil {
 		kafkaWriter = kafka.NewWriter(kafka.WriterConfig{
-			Brokers:  []string{"172.31.233.86:9092,172.31.233.87:9092,172.31.233.88:9092"},
+			Brokers:  []string{"172.31.233.86:9092", "172.31.233.87:9092", "172.31.233.88:9092"},
 			Topic:    "ethereum_trx",
 			Balancer: &kafka.LeastBytes{},
 		})
@@ -164,7 +164,7 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 		Key:   []byte(st.TxHash.String()),
 		Value: marshal,
 	})
-	if err !=nil {
+	if err != nil {
 		fmt.Println(err)
 	}
 	return executionResult.Result, nil
@@ -269,7 +269,7 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 		Key:   []byte(st.TxHash.String()),
 		Value: marshal,
 	})
-	if err !=nil {
+	if err != nil {
 		fmt.Println(err)
 	}
 
