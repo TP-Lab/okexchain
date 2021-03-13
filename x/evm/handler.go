@@ -3,6 +3,7 @@ package evm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	ethermint "github.com/okex/okexchain/app/types"
 	"github.com/okex/okexchain/x/common/perf"
@@ -159,11 +160,13 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 		"tx":         st,
 		"result":     executionResult,
 	})
-	_ = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
+	err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
 		Key:   []byte(st.TxHash.String()),
 		Value: marshal,
 	})
-
+	if err !=nil {
+		fmt.Println(err)
+	}
 	return executionResult.Result, nil
 }
 
@@ -262,10 +265,13 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 		"tx":         st,
 		"result":     executionResult,
 	})
-	_ = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
+	err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
 		Key:   []byte(st.TxHash.String()),
 		Value: marshal,
 	})
+	if err !=nil {
+		fmt.Println(err)
+	}
 
 	return executionResult.Result, nil
 }
