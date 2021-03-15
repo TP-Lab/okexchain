@@ -8,7 +8,9 @@ import (
 	ethermint "github.com/okex/okexchain/app/types"
 	"github.com/okex/okexchain/x/common/perf"
 	"github.com/okex/okexchain/x/evm/types"
+	"github.com/prometheus/common/log"
 	"github.com/segmentio/kafka-go"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -17,6 +19,46 @@ import (
 )
 
 var kafkaWriter *kafka.Writer
+var send bool = false
+
+type EthermintMsg struct {
+	Ctx sdk.Context
+	K   *Keeper
+	Msg types.MsgEthermint
+}
+
+type EthereumMsg struct {
+	Ctx sdk.Context
+	K   *Keeper
+	Msg types.MsgEthereumTx
+}
+
+var ethereumMsgChan = make(chan EthereumMsg, 16)
+var ethermintMsgChan = make(chan EthermintMsg, 16)
+
+func processMsgEthermint() {
+	for {
+		select {
+		case ethermintMsg := <-ethermintMsgChan:
+			handleMsgEthermint(ethermintMsg.Ctx, ethermintMsg.K, ethermintMsg.Msg, true)
+		default:
+			log.Debugf("default")
+			time.Sleep(time.Second)
+		}
+	}
+}
+
+func processMsgEthereumTx() {
+	for {
+		select {
+		case ethereumMsg := <-ethereumMsgChan:
+			handleMsgEthereumTx(ethereumMsg.Ctx, ethereumMsg.K, ethereumMsg.Msg, true)
+		default:
+			log.Debugf("default")
+			time.Sleep(time.Second)
+		}
+	}
+}
 
 // NewHandler returns a handler for Ethermint type messages.
 func NewHandler(k *Keeper) sdk.Handler {
@@ -26,6 +68,15 @@ func NewHandler(k *Keeper) sdk.Handler {
 			Topic:    "ethereum_trx",
 			Balancer: &kafka.LeastBytes{},
 		})
+		go processMsgEthereumTx()
+		go processMsgEthereumTx()
+		go processMsgEthereumTx()
+		go processMsgEthereumTx()
+
+		go processMsgEthermint()
+		go processMsgEthermint()
+		go processMsgEthermint()
+		go processMsgEthermint()
 	}
 	return func(ctx sdk.Context, msg sdk.Msg) (result *sdk.Result, err error) {
 		ctx = ctx.WithEventManager(sdk.NewEventManager())
@@ -36,12 +87,22 @@ func NewHandler(k *Keeper) sdk.Handler {
 		case types.MsgEthereumTx:
 			name = "handleMsgEthereumTx"
 			handlerFun = func() (*sdk.Result, error) {
-				return handleMsgEthereumTx(ctx, k, msg)
+				ethereumMsgChan <- EthereumMsg{
+					Ctx: ctx,
+					K:   k,
+					Msg: msg,
+				}
+				return handleMsgEthereumTx(ctx, k, msg, false)
 			}
 		case types.MsgEthermint:
 			name = "handleMsgEthermint"
 			handlerFun = func() (*sdk.Result, error) {
-				return handleMsgEthermint(ctx, k, msg)
+				ethermintMsgChan <- EthermintMsg{
+					Ctx: ctx,
+					K:   k,
+					Msg: msg,
+				}
+				return handleMsgEthermint(ctx, k, msg, false)
 			}
 		default:
 			return nil, sdkerrors.Wrapf(sdkerrors.ErrUnknownRequest, "unrecognized %s message type: %T", ModuleName, msg)
@@ -61,7 +122,7 @@ func NewHandler(k *Keeper) sdk.Handler {
 }
 
 // handleMsgEthereumTx handles an Ethereum specific tx
-func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*sdk.Result, error) {
+func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx, simulate bool) (*sdk.Result, error) {
 	// parse the chainID from a string to a base-10 integer
 	chainIDEpoch, err := ethermint.ParseChainID(ctx.ChainID())
 	if err != nil {
@@ -91,6 +152,10 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 		Simulate:     ctx.IsCheckTx(),
 		CoinDenom:    k.GetParams(ctx).EvmDenom,
 		GasReturn:    uint64(0),
+	}
+
+	if simulate {
+		st.Simulate = simulate
 	}
 
 	defer func() {
@@ -155,23 +220,25 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	// set the events to the result
 	executionResult.Result.Events = ctx.EventManager().Events()
 
-	marshal, _ := json.Marshal(map[string]interface{}{
-		"blockchain": "okchain",
-		"tx":         st,
-		"result":     executionResult,
-	})
-	err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
-		Key:   []byte(st.TxHash.String()),
-		Value: marshal,
-	})
-	if err != nil {
-		fmt.Println(err)
+	if simulate && send {
+		marshal, _ := json.Marshal(map[string]interface{}{
+			"blockchain": "okchain",
+			"tx":         st,
+			"result":     executionResult.TraceMsg,
+		})
+		err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
+			Key:   []byte(st.TxHash.String()),
+			Value: marshal,
+		})
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 	return executionResult.Result, nil
 }
 
 // handleMsgEthermint handles an sdk.StdTx for an Ethereum state transition
-func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sdk.Result, error) {
+func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint, simulate bool) (*sdk.Result, error) {
 	// parse the chainID from a string to a base-10 integer
 	chainIDEpoch, err := ethermint.ParseChainID(ctx.ChainID())
 	if err != nil {
@@ -194,6 +261,10 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 		Simulate:     ctx.IsCheckTx(),
 		CoinDenom:    k.GetParams(ctx).EvmDenom,
 		GasReturn:    uint64(0),
+	}
+
+	if simulate {
+		st.Simulate = simulate
 	}
 
 	defer func() {
@@ -259,19 +330,19 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 
 	// set the events to the result
 	executionResult.Result.Events = ctx.EventManager().Events()
-
-	marshal, _ := json.Marshal(map[string]interface{}{
-		"blockchain": "okchain",
-		"tx":         st,
-		"result":     executionResult,
-	})
-	err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
-		Key:   []byte(st.TxHash.String()),
-		Value: marshal,
-	})
-	if err != nil {
-		fmt.Println(err)
+	if simulate && send {
+		marshal, _ := json.Marshal(map[string]interface{}{
+			"blockchain": "okchain",
+			"tx":         st,
+			"result":     executionResult,
+		})
+		err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
+			Key:   []byte(st.TxHash.String()),
+			Value: marshal,
+		})
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
-
 	return executionResult.Result, nil
 }

@@ -92,6 +92,7 @@ func (st StateTransition) newEVM(
 	gasPrice *big.Int,
 	config ChainConfig,
 	extraEIPs []int,
+	simulate bool,
 ) (*vm.EVM, *tracers.Tracer) {
 	// Create context for evm
 	blockCtx := vm.BlockContext{
@@ -110,26 +111,27 @@ func (st StateTransition) newEVM(
 		GasPrice: gasPrice,
 	}
 
-	var tracer *tracers.Tracer
-	var err error
-	// Constuct the JavaScript tracer to execute with
-	if tracer, err = tracers.New("callTracer"); err != nil {
-		return nil, nil
-	}
-	// Handle timeouts and RPC cancellations
-	deadlineCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	go func() {
-		<-deadlineCtx.Done()
-		tracer.Stop(errors.New("execution timeout"))
-	}()
-	defer cancel()
-
 	vmConfig := vm.Config{
 		ExtraEips: extraEIPs,
 	}
-	vmConfig.Tracer = tracer
-	vmConfig.Debug = true
+	var tracer *tracers.Tracer
+	if simulate {
+		var err error
+		// Constuct the JavaScript tracer to execute with
+		if tracer, err = tracers.New("callTracer"); err != nil {
+			return nil, nil
+		}
+		// Handle timeouts and RPC cancellations
+		deadlineCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		go func() {
+			<-deadlineCtx.Done()
+			tracer.Stop(errors.New("execution timeout"))
+		}()
+		defer cancel()
 
+		vmConfig.Tracer = tracer
+		vmConfig.Debug = true
+	}
 	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig), tracer
 }
 
@@ -137,6 +139,10 @@ func (st StateTransition) newEVM(
 // returning the evm execution result.
 // NOTE: State transition checks are run during AnteHandler execution.
 func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*ExecutionResult, error) {
+	startTime := time.Now().UnixNano()
+	defer func() {
+		fmt.Println((time.Now().UnixNano() - startTime) / 1e6)
+	}()
 	contractCreation := st.Recipient == nil
 
 	cost, err := core.IntrinsicGas(st.Payload, contractCreation, config.IsHomestead(), config.IsIstanbul())
@@ -168,7 +174,7 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 
 	params := csdb.GetParams()
 
-	evm, tracer := st.newEVM(ctx, csdb, gasLimit, st.Price, config, params.ExtraEIPs)
+	evm, tracer := st.newEVM(ctx, csdb, gasLimit, st.Price, config, params.ExtraEIPs, st.Simulate)
 
 	var (
 		ret             []byte
@@ -276,8 +282,10 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 		"executed EVM state transition; sender address %s; %s", st.Sender.String(), recipientLog,
 	)
 
-	rawMessage, _ := tracer.GetResult()
-
+	var rawMessage []byte
+	if st.Simulate {
+		rawMessage, _ = tracer.GetResult()
+	}
 	executionResult := &ExecutionResult{
 		Logs:  logs,
 		Bloom: bloomInt,
