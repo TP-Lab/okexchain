@@ -210,7 +210,7 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 
 	// log successful execution
 	k.Logger(ctx).Info(executionResult.Result.Log)
-	fmt.Println(string(executionResult.TraceMsg))
+	//fmt.Println(string(executionResult.TraceMsg))
 
 	ctx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
