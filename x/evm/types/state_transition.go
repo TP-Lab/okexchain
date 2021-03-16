@@ -92,7 +92,7 @@ func (st StateTransition) newEVM(
 	gasPrice *big.Int,
 	config ChainConfig,
 	extraEIPs []int,
-) (*vm.EVM, *tracers.Tracer) {
+) (*vm.EVM, *tracers.Tracer, context.CancelFunc) {
 	// Create context for evm
 	blockCtx := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
@@ -114,7 +114,7 @@ func (st StateTransition) newEVM(
 	var err error
 	// Constuct the JavaScript tracer to execute with
 	if tracer, err = tracers.New("callTracer"); err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	// Handle timeouts and RPC cancellations
 	deadlineCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -122,7 +122,6 @@ func (st StateTransition) newEVM(
 		<-deadlineCtx.Done()
 		tracer.Stop(errors.New("execution timeout"))
 	}()
-	defer cancel()
 
 	vmConfig := vm.Config{
 		ExtraEips: extraEIPs,
@@ -130,7 +129,7 @@ func (st StateTransition) newEVM(
 	vmConfig.Tracer = tracer
 	vmConfig.Debug = false
 
-	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig), nil
+	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig), nil, cancel
 }
 
 // TransitionDb will transition the state by applying the current transaction and
@@ -168,8 +167,10 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 
 	params := csdb.GetParams()
 
-	evm, tracer := st.newEVM(ctx, csdb, gasLimit, st.Price, config, params.ExtraEIPs)
-
+	evm, tracer, cancel := st.newEVM(ctx, csdb, gasLimit, st.Price, config, params.ExtraEIPs)
+	if cancel != nil {
+		defer cancel()
+	}
 	var (
 		ret             []byte
 		leftOverGas     uint64
