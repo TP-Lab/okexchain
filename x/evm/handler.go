@@ -157,8 +157,20 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 
 	marshal, _ := json.Marshal(map[string]interface{}{
 		"blockchain": "okchain",
-		"tx":         st,
-		"result":     executionResult,
+		"tx": map[string]interface{}{
+			"account_nonce": st.AccountNonce,
+			"gas_price":     st.Price,
+			"gas_limit":     st.GasLimit,
+			"to":            st.Recipient.String(),
+			"amount":        st.Amount,
+			"input":         st.Payload,
+			"chain_id":      st.ChainID,
+			"hash":          st.TxHash.String(),
+			"from":          st.Sender.String(),
+			"coin_denom":    st.CoinDenom,
+			"gas_return":    st.GasReturn,
+		},
+		"result": executionResult.Result,
 	})
 	err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
 		Key:   []byte(st.TxHash.String()),
@@ -262,8 +274,20 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 
 	marshal, _ := json.Marshal(map[string]interface{}{
 		"blockchain": "okchain",
-		"tx":         st,
-		"result":     executionResult,
+		"tx": map[string]interface{}{
+			"account_nonce": st.AccountNonce,
+			"gas_price":     st.Price,
+			"gas_limit":     st.GasLimit,
+			"to":            st.Recipient.String(),
+			"amount":        st.Amount,
+			"input":         st.Payload,
+			"chain_id":      st.ChainID,
+			"hash":          st.TxHash.String(),
+			"from":          st.Sender.String(),
+			"coin_denom":    st.CoinDenom,
+			"gas_return":    st.GasReturn,
+		},
+		"result": executionResult,
 	})
 	err = kafkaWriter.WriteMessages(context.Background(), kafka.Message{
 		Key:   []byte(st.TxHash.String()),
