@@ -128,9 +128,9 @@ func (st StateTransition) newEVM(
 		ExtraEips: extraEIPs,
 	}
 	vmConfig.Tracer = tracer
-	vmConfig.Debug = true
+	vmConfig.Debug = false
 
-	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig), tracer
+	return vm.NewEVM(blockCtx, txCtx, csdb, config.EthereumConfig(st.ChainID), vmConfig), nil
 }
 
 // TransitionDb will transition the state by applying the current transaction and
@@ -276,7 +276,10 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 		"executed EVM state transition; sender address %s; %s", st.Sender.String(), recipientLog,
 	)
 
-	rawMessage, _ := tracer.GetResult()
+	var rawMessage []byte
+	if tracer != nil {
+		rawMessage, _ = tracer.GetResult()
+	}
 
 	executionResult := &ExecutionResult{
 		Logs:  logs,
