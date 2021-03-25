@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/hook"
 	"math/big"
 	"strings"
 
@@ -182,6 +183,10 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 		ret, leftOverGas, err = evm.Call(senderRef, *st.Recipient, st.Payload, gasLimit, st.Amount)
 		recipientLog = fmt.Sprintf("recipient address %s", st.Recipient.String())
 	}
+	if err != nil {
+		// HOOK: handle the tx error
+		hook.GlobalHook.HandleTxError(err.Error())
+	}
 
 	gasConsumed := gasLimit - leftOverGas
 
@@ -269,7 +274,6 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (*Ex
 			GasRefunded: leftOverGas,
 		},
 	}
-
 
 	return executionResult, nil
 }

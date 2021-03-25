@@ -2,6 +2,10 @@ package evm
 
 import (
 	"encoding/json"
+	"github.com/ethereum/go-ethereum/hook"
+	"math/big"
+
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/gorilla/mux"
 	"github.com/spf13/cobra"
@@ -115,11 +119,21 @@ func (am AppModule) NewQuerierHandler() sdk.Querier {
 // BeginBlock function for module at start of each block
 func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
 	am.keeper.BeginBlock(ctx, req)
+	// HOOK: prepare block
+	block := ethtypes.NewBlockWithHeader(&ethtypes.Header{
+		Time:   uint64(req.Header.Time.Unix()),
+		Number: big.NewInt(req.Header.Height),
+	})
+	//todo add blockHash
+	hook.GlobalHook.PrepareBlock(block)
 }
 
 // EndBlock function for module at end of block
 func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate {
-	return am.keeper.EndBlock(ctx, req)
+	validatorUpdates := am.keeper.EndBlock(ctx, req)
+	// HOOK: finalize blocks
+	hook.GlobalHook.FinalizeBlock()
+	return validatorUpdates
 }
 
 // InitGenesis instantiates the genesis state

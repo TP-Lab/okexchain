@@ -2,9 +2,14 @@ package evm
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/hook"
+	apprpctypes "github.com/okex/okexchain/app/rpc/types"
 	ethermint "github.com/okex/okexchain/app/types"
 	"github.com/okex/okexchain/x/common/perf"
 	"github.com/okex/okexchain/x/evm/types"
+	evmtypes "github.com/okex/okexchain/x/evm/types"
+	"math/big"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -60,7 +65,6 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	if err != nil {
 		return nil, err
 	}
-
 	txHash := tmtypes.Tx(ctx.TxBytes()).Hash()
 	ethHash := common.BytesToHash(txHash)
 
@@ -79,6 +83,12 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 		CoinDenom:    k.GetParams(ctx).EvmDenom,
 		GasReturn:    uint64(0),
 	}
+	// HOOK: prepare tx
+	blockHash := st.Csdb.BlockHash()
+	blockNumber := uint64(ctx.BlockHeight())
+	txIndex := st.Csdb.TxIndex()
+	transaction, _ := apprpctypes.NewEthTransaction(&msg, ethHash, blockHash, blockNumber, uint64(txIndex))
+	hook.GlobalHook.PrepareTx(sender, transaction)
 
 	defer func() {
 		if !st.Simulate {
@@ -105,6 +115,24 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	}
 
 	executionResult, err := st.TransitionDb(ctx, config)
+	// HOOK: prepare tx
+	var status uint64 = 1
+	if err != nil {
+		status = 0 // transaction failed
+	}
+	data, err := evmtypes.DecodeResultData(msg.Data.Payload)
+	hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
+		CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
+		Status:            status,
+		Bloom:             data.Bloom,
+		ContractAddress:   data.ContractAddress,
+		Logs:              executionResult.Logs,
+		TxHash:            ethHash,
+		GasUsed:           executionResult.GasInfo.GasConsumed,
+		BlockHash:         blockHash,
+		BlockNumber:       big.NewInt(int64(blockNumber)),
+		TransactionIndex:  uint(txIndex),
+	})
 	if err != nil {
 		return nil, err
 	}
