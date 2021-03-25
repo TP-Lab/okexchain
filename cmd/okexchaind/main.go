@@ -89,7 +89,7 @@ func main() {
 	server.AddCommands(ctx, cdc, rootCmd, newApp, exportAppStateAndTMValidators, registerRoutes)
 
 	// HOOK: enable hook
-	hook.EnableHook(true, true)
+	hook.EnableHook(true, false)
 	hook.InitContext(nil)
 
 	// prepare and add flags
