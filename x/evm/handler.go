@@ -65,6 +65,7 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	if err != nil {
 		return nil, err
 	}
+
 	txHash := tmtypes.Tx(ctx.TxBytes()).Hash()
 	ethHash := common.BytesToHash(txHash)
 
@@ -115,24 +116,22 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	}
 
 	executionResult, err := st.TransitionDb(ctx, config)
-	// HOOK: prepare tx
-	var status uint64 = 1
-	if err != nil {
-		status = 0 // transaction failed
+	if executionResult != nil {
+		// HOOK: prepare tx
+		data, _ := evmtypes.DecodeResultData(msg.Data.Payload)
+		hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
+			CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
+			Status:            99,
+			Bloom:             data.Bloom,
+			ContractAddress:   data.ContractAddress,
+			Logs:              executionResult.Logs,
+			TxHash:            ethHash,
+			GasUsed:           executionResult.GasInfo.GasConsumed,
+			BlockHash:         blockHash,
+			BlockNumber:       big.NewInt(int64(blockNumber)),
+			TransactionIndex:  uint(txIndex),
+		})
 	}
-	data, err := evmtypes.DecodeResultData(msg.Data.Payload)
-	hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
-		CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
-		Status:            status,
-		Bloom:             data.Bloom,
-		ContractAddress:   data.ContractAddress,
-		Logs:              executionResult.Logs,
-		TxHash:            ethHash,
-		GasUsed:           executionResult.GasInfo.GasConsumed,
-		BlockHash:         blockHash,
-		BlockNumber:       big.NewInt(int64(blockNumber)),
-		TransactionIndex:  uint(txIndex),
-	})
 	if err != nil {
 		return nil, err
 	}
