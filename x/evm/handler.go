@@ -119,9 +119,13 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	if executionResult != nil {
 		// HOOK: prepare tx
 		data, _ := evmtypes.DecodeResultData(msg.Data.Payload)
+		var status uint64 = 1
+		if err != nil {
+			status = 0
+		}
 		hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
 			CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
-			Status:            99,
+			Status:            status,
 			Bloom:             data.Bloom,
 			ContractAddress:   data.ContractAddress,
 			Logs:              executionResult.Logs,
@@ -196,6 +200,12 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 		CoinDenom:    k.GetParams(ctx).EvmDenom,
 		GasReturn:    uint64(0),
 	}
+	// HOOK: prepare tx
+	blockHash := st.Csdb.BlockHash()
+	blockNumber := uint64(ctx.BlockHeight())
+	txIndex := st.Csdb.TxIndex()
+	transaction, _ := apprpctypes.NewEthTransactionFromEthermint(&msg, ethHash, blockHash, blockNumber, uint64(txIndex))
+	hook.GlobalHook.PrepareTx(common.BytesToAddress(msg.From.Bytes()), transaction)
 
 	defer func() {
 		if !st.Simulate {
@@ -224,6 +234,26 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 	}
 
 	executionResult, err := st.TransitionDb(ctx, config)
+	if executionResult != nil {
+		// HOOK: prepare tx
+		data, _ := evmtypes.DecodeResultData(msg.Payload)
+		var status uint64 = 1
+		if err != nil {
+			status = 0
+		}
+		hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
+			CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
+			Status:            status,
+			Bloom:             data.Bloom,
+			ContractAddress:   data.ContractAddress,
+			Logs:              executionResult.Logs,
+			TxHash:            ethHash,
+			GasUsed:           executionResult.GasInfo.GasConsumed,
+			BlockHash:         blockHash,
+			BlockNumber:       big.NewInt(int64(blockNumber)),
+			TransactionIndex:  uint(txIndex),
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
