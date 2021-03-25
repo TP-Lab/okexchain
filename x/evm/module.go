@@ -2,6 +2,7 @@ package evm
 
 import (
 	"encoding/json"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/hook"
 	"math/big"
 
@@ -125,7 +126,7 @@ func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
 		Number: big.NewInt(req.Header.Height),
 	})
 	//todo add blockHash
-	hook.GlobalHook.PrepareBlock(block)
+	hook.GlobalHook.PrepareBlock(block, common.BytesToHash(req.Hash).String())
 }
 
 // EndBlock function for module at end of block
