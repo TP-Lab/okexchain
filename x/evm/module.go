@@ -121,12 +121,12 @@ func (am AppModule) NewQuerierHandler() sdk.Querier {
 func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
 	am.keeper.BeginBlock(ctx, req)
 	// HOOK: prepare block
-	block := ethtypes.NewBlockWithHeader(&ethtypes.Header{
+	hash := common.BytesToHash(req.Hash)
+	block := ethtypes.NewCustomBlockWithHeader(&ethtypes.Header{
 		Time:   uint64(req.Header.Time.Unix()),
 		Number: big.NewInt(req.Header.Height),
-	})
-	//todo add blockHash
-	hook.GlobalHook.PrepareBlock(block, common.BytesToHash(req.Hash).String())
+	}, &hash)
+	hook.GlobalHook.PrepareBlock(block)
 }
 
 // EndBlock function for module at end of block

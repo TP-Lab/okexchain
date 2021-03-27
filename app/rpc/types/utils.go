@@ -104,7 +104,7 @@ func NewEthTransaction(tx *evmtypes.MsgEthereumTx, txHash, blockHash common.Hash
 	if rpcTx.To != nil {
 		to = *rpcTx.To
 	}
-	transaction := ethtypes.NewTransaction(uint64(rpcTx.Nonce), to, rpcTx.Value.ToInt(), uint64(rpcTx.Gas), (*big.Int)(rpcTx.GasPrice), rpcTx.Input)
+	transaction := ethtypes.NewCustomTransaction(&txHash, uint64(rpcTx.Nonce), &to, rpcTx.Value.ToInt(), uint64(rpcTx.Gas), (*big.Int)(rpcTx.GasPrice), rpcTx.Input)
 	return transaction, nil
 }
 
@@ -130,7 +130,7 @@ func NewEthTransactionFromEthermint(tx *evmtypes.MsgEthermint, txHash, blockHash
 	if rpcTx.To != nil {
 		to = *rpcTx.To
 	}
-	transaction := ethtypes.NewTransaction(uint64(rpcTx.Nonce), to, rpcTx.Value.ToInt(), uint64(rpcTx.Gas), (*big.Int)(rpcTx.GasPrice), rpcTx.Input)
+	transaction := ethtypes.NewCustomTransaction(&txHash, uint64(rpcTx.Nonce), &to, rpcTx.Value.ToInt(), uint64(rpcTx.Gas), (*big.Int)(rpcTx.GasPrice), rpcTx.Input)
 	return transaction, nil
 }
 
