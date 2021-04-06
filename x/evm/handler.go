@@ -248,7 +248,7 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 			ContractAddress:   data.ContractAddress,
 			Logs:              executionResult.Logs,
 			TxHash:            ethHash,
-			GasUsed:           executionResult.GasInfo.GasConsumed,
+			GasUsed:           ctx.GasMeter().GasConsumed(),
 			BlockHash:         blockHash,
 			BlockNumber:       big.NewInt(int64(blockNumber)),
 			TransactionIndex:  uint(txIndex),
