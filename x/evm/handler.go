@@ -130,7 +130,7 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 			ContractAddress:   data.ContractAddress,
 			Logs:              executionResult.Logs,
 			TxHash:            ethHash,
-			GasUsed:           executionResult.GasInfo.GasConsumed,
+			GasUsed:           ctx.GasMeter().GasConsumed(),
 			BlockHash:         blockHash,
 			BlockNumber:       big.NewInt(int64(blockNumber)),
 			TransactionIndex:  uint(txIndex),
