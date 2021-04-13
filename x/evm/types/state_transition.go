@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/hook"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -188,6 +188,10 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (exe
 		csdb.SetNonce(st.Sender, csdb.GetNonce(st.Sender)+1)
 		ret, leftOverGas, err = evm.Call(senderRef, *st.Recipient, st.Payload, gasLimit, st.Amount)
 		recipientLog = fmt.Sprintf("recipient address %s", st.Recipient.String())
+	}
+	if err != nil {
+		// HOOK: handle the tx error
+		hook.GlobalHook.HandleTxError(err.Error())
 	}
 
 	gasConsumed := gasLimit - leftOverGas
