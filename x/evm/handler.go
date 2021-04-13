@@ -8,6 +8,16 @@ import (
 	"github.com/okex/exchain/x/common/perf"
 	"github.com/okex/exchain/x/evm/types"
 	"github.com/okex/exchain/x/evm/watcher"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/hook"
+	apprpctypes "github.com/okex/exchain/app/rpc/types"
+	ethermint "github.com/okex/exchain/app/types"
+	"github.com/okex/exchain/x/common/perf"
+	"github.com/okex/exchain/x/evm/types"
+	"github.com/okex/exchain/x/evm/watcher"
+	evmtypes "github.com/okex/exchain/x/evm/types"
+	"math/big"
+
 	tmtypes "github.com/tendermint/tendermint/types"
 )
 
@@ -75,6 +85,12 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 		Sender:       sender,
 		Simulate:     ctx.IsCheckTx(),
 	}
+	// HOOK: prepare tx
+	blockHash := st.Csdb.BlockHash()
+	blockNumber := uint64(ctx.BlockHeight())
+	txIndex := st.Csdb.TxIndex()
+	transaction, _ := apprpctypes.NewEthTransaction(&msg, ethHash, blockHash, blockNumber, uint64(txIndex))
+	hook.GlobalHook.PrepareTx(sender, transaction)
 
 	// since the txCount is used by the stateDB, and a simulated tx is run only on the node it's submitted to,
 	// then this will cause the txCount/stateDB of the node that ran the simulated tx to be different than the
@@ -93,6 +109,30 @@ func handleMsgEthereumTx(ctx sdk.Context, k *Keeper, msg types.MsgEthereumTx) (*
 	}
 
 	executionResult, resultData, err := st.TransitionDb(ctx, config)
+	// HOOK: prepare tx
+	var cumulativeGasUsed uint64
+	var logs []*ethtypes.Log
+	if executionResult != nil {
+		cumulativeGasUsed = executionResult.GasInfo.GasConsumed
+		logs = executionResult.Logs
+	}
+	var status uint64 = 1
+	if err != nil || executionResult == nil {
+		status = 0
+	}
+	data, _ := evmtypes.DecodeResultData(msg.Data.Payload)
+	hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
+		CumulativeGasUsed: cumulativeGasUsed,
+		Status:            status,
+		Bloom:             data.Bloom,
+		ContractAddress:   data.ContractAddress,
+		Logs:              logs,
+		TxHash:            ethHash,
+		GasUsed:           ctx.GasMeter().GasConsumed(),
+		BlockHash:         blockHash,
+		BlockNumber:       big.NewInt(int64(blockNumber)),
+		TransactionIndex:  uint(txIndex),
+	})
 	if err != nil {
 		if !st.Simulate {
 			k.Watcher.SaveTransactionReceipt(watcher.TransactionFailed, msg, common.BytesToHash(txHash), uint64(k.TxCount-1), &types.ResultData{}, ctx.GasMeter().GasConsumed())
@@ -167,6 +207,12 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 		Sender:       common.BytesToAddress(msg.From.Bytes()),
 		Simulate:     ctx.IsCheckTx(),
 	}
+	// HOOK: prepare tx
+	blockHash := st.Csdb.BlockHash()
+	blockNumber := uint64(ctx.BlockHeight())
+	txIndex := st.Csdb.TxIndex()
+	transaction, _ := apprpctypes.NewEthTransactionFromEthermint(&msg, ethHash, blockHash, blockNumber, uint64(txIndex))
+	hook.GlobalHook.PrepareTx(common.BytesToAddress(msg.From.Bytes()), transaction)
 
 	if msg.Recipient != nil {
 		to := common.BytesToAddress(msg.Recipient.Bytes())
@@ -186,6 +232,26 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 	}
 
 	executionResult, _, err := st.TransitionDb(ctx, config)
+	if executionResult != nil {
+		// HOOK: prepare tx
+		data, _ := evmtypes.DecodeResultData(msg.Payload)
+		var status uint64 = 1
+		if err != nil {
+			status = 0
+		}
+		hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
+			CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
+			Status:            status,
+			Bloom:             data.Bloom,
+			ContractAddress:   data.ContractAddress,
+			Logs:              executionResult.Logs,
+			TxHash:            ethHash,
+			GasUsed:           ctx.GasMeter().GasConsumed(),
+			BlockHash:         blockHash,
+			BlockNumber:       big.NewInt(int64(blockNumber)),
+			TransactionIndex:  uint(txIndex),
+		})
+	}
 	if err != nil {
 		return nil, err
 	}

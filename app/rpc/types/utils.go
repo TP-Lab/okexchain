@@ -74,6 +74,67 @@ func NewTransaction(tx *evmtypes.MsgEthereumTx, txHash, blockHash common.Hash, b
 	return rpcTx, nil
 }
 
+func NewEthTransaction(tx *evmtypes.MsgEthereumTx, txHash, blockHash common.Hash, blockNumber, index uint64) (*ethtypes.Transaction, error) {
+	// Verify signature and retrieve sender address
+	from, err := tx.VerifySig(tx.ChainID())
+	if err != nil {
+		return nil, err
+	}
+
+	rpcTx := &Transaction{
+		From:     from,
+		Gas:      hexutil.Uint64(tx.Data.GasLimit),
+		GasPrice: (*hexutil.Big)(tx.Data.Price),
+		Hash:     txHash,
+		Input:    hexutil.Bytes(tx.Data.Payload),
+		Nonce:    hexutil.Uint64(tx.Data.AccountNonce),
+		To:       tx.To(),
+		Value:    (*hexutil.Big)(tx.Data.Amount),
+		V:        (*hexutil.Big)(tx.Data.V),
+		R:        (*hexutil.Big)(tx.Data.R),
+		S:        (*hexutil.Big)(tx.Data.S),
+	}
+
+	if blockHash != (common.Hash{}) {
+		rpcTx.BlockHash = &blockHash
+		rpcTx.BlockNumber = (*hexutil.Big)(new(big.Int).SetUint64(blockNumber))
+		rpcTx.TransactionIndex = (*hexutil.Uint64)(&index)
+	}
+
+	var to common.Address
+	if rpcTx.To != nil {
+		to = *rpcTx.To
+	}
+	transaction := ethtypes.NewCustomTransaction(&txHash, uint64(rpcTx.Nonce), &to, rpcTx.Value.ToInt(), uint64(rpcTx.Gas), (*big.Int)(rpcTx.GasPrice), rpcTx.Input)
+	return transaction, nil
+}
+
+func NewEthTransactionFromEthermint(tx *evmtypes.MsgEthermint, txHash, blockHash common.Hash, blockNumber, index uint64) (*ethtypes.Transaction, error) {
+	rpcTx := &Transaction{
+		From:     common.BytesToAddress(tx.From.Bytes()),
+		Gas:      hexutil.Uint64(tx.GasLimit),
+		GasPrice: (*hexutil.Big)(tx.Price.BigInt()),
+		Hash:     txHash,
+		Input:    hexutil.Bytes(tx.Payload),
+		Nonce:    hexutil.Uint64(tx.AccountNonce),
+		To:       tx.To(),
+		Value:    (*hexutil.Big)(tx.Amount.BigInt()),
+	}
+
+	if blockHash != (common.Hash{}) {
+		rpcTx.BlockHash = &blockHash
+		rpcTx.BlockNumber = (*hexutil.Big)(new(big.Int).SetUint64(blockNumber))
+		rpcTx.TransactionIndex = (*hexutil.Uint64)(&index)
+	}
+
+	var to common.Address
+	if rpcTx.To != nil {
+		to = *rpcTx.To
+	}
+	transaction := ethtypes.NewCustomTransaction(&txHash, uint64(rpcTx.Nonce), &to, rpcTx.Value.ToInt(), uint64(rpcTx.Gas), (*big.Int)(rpcTx.GasPrice), rpcTx.Input)
+	return transaction, nil
+}
+
 // EthBlockFromTendermint returns a JSON-RPC compatible Ethereum blockfrom a given Tendermint block.
 func EthBlockFromTendermint(clientCtx clientcontext.CLIContext, block *tmtypes.Block, fullTx bool) (map[string]interface{}, error) {
 	var blockTxs interface{}

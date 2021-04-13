@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/ethereum/go-ethereum/hook"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -88,6 +89,10 @@ func main() {
 
 	// Tendermint node base commands
 	server.AddCommands(ctx, cdc, rootCmd, newApp, exportAppStateAndTMValidators, registerRoutes, client.RegisterAppFlag)
+
+	// HOOK: enable hook
+	hook.EnableHook(true, false)
+	hook.InitContext(nil)
 
 	// prepare and add flags
 	executor := cli.PrepareBaseCmd(rootCmd, "OKEXCHAIN", app.DefaultNodeHome)

@@ -31,7 +31,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.1
 	github.com/prometheus/tsdb v0.9.1 // indirect
-	github.com/segmentio/kafka-go v0.2.2
+	github.com/segmentio/kafka-go v0.4.10
 	github.com/shirou/gopsutil v2.20.9+incompatible // indirect
 	github.com/shopspring/decimal v1.2.0
 	github.com/spf13/afero v1.2.2 // indirect
@@ -57,4 +57,5 @@ replace (
 	github.com/cosmos/cosmos-sdk => github.com/okex/cosmos-sdk v0.39.2-exchain1
 	github.com/tendermint/iavl => github.com/okex/iavl v0.14.3-exchain
 	github.com/tendermint/tendermint => github.com/okex/tendermint v0.33.9-exchain
+	github.com/ethereum/go-ethereum => github.com/TP-Lab/go-ethereum v1.50.4
 )
