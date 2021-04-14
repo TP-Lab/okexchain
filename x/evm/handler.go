@@ -228,26 +228,29 @@ func handleMsgEthermint(ctx sdk.Context, k *Keeper, msg types.MsgEthermint) (*sd
 	}
 
 	executionResult, _, err := st.TransitionDb(ctx, config)
+	var cumulativeGasUsed uint64
+	var logs []*ethtypes.Log
 	if executionResult != nil {
-		// HOOK: prepare tx
-		data, _ := evmtypes.DecodeResultData(msg.Payload)
-		var status uint64 = 1
-		if err != nil {
-			status = 0
-		}
-		hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
-			CumulativeGasUsed: executionResult.GasInfo.GasConsumed,
-			Status:            status,
-			Bloom:             data.Bloom,
-			ContractAddress:   data.ContractAddress,
-			Logs:              executionResult.Logs,
-			TxHash:            ethHash,
-			GasUsed:           ctx.GasMeter().GasConsumed(),
-			BlockHash:         blockHash,
-			BlockNumber:       big.NewInt(int64(blockNumber)),
-			TransactionIndex:  uint(txIndex),
-		})
+		cumulativeGasUsed = executionResult.GasInfo.GasConsumed
+		logs = executionResult.Logs
 	}
+	var status uint64 = 1
+	if err != nil || executionResult == nil {
+		status = 0
+	}
+	data, _ := evmtypes.DecodeResultData(msg.Payload)
+	hook.GlobalHook.HandleReceipt(ethHash.String(), &ethtypes.Receipt{
+		CumulativeGasUsed: cumulativeGasUsed,
+		Status:            status,
+		Bloom:             data.Bloom,
+		ContractAddress:   data.ContractAddress,
+		Logs:              logs,
+		TxHash:            ethHash,
+		GasUsed:           ctx.GasMeter().GasConsumed(),
+		BlockHash:         blockHash,
+		BlockNumber:       big.NewInt(int64(blockNumber)),
+		TransactionIndex:  uint(txIndex),
+	})
 	if err != nil {
 		return nil, err
 	}
