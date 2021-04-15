@@ -189,11 +189,12 @@ func (st StateTransition) TransitionDb(ctx sdk.Context, config ChainConfig) (exe
 		ret, leftOverGas, err = evm.Call(senderRef, *st.Recipient, st.Payload, gasLimit, st.Amount)
 		recipientLog = fmt.Sprintf("recipient address %s", st.Recipient.String())
 	}
-	if err != nil {
-		// HOOK: handle the tx error
-		hook.GlobalHook.HandleTxError(err.Error())
+	if !st.Simulate {
+		if err != nil {
+			// HOOK: handle the tx error
+			hook.GlobalHook.HandleTxError(err.Error())
+		}
 	}
-
 	gasConsumed := gasLimit - leftOverGas
 
 	defer func() {
